@@ -1,0 +1,37 @@
+# config/default.yaml
+
+logging:
+  file:
+    path: "simulation.log"
+    max_bytes: 10485760       # 10 MB
+    backup_count: 5
+    level: "DEBUG"
+    format: "%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(lineno)d): %(message)s"
+  console:
+    level: "INFO"
+    format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+
+simulator:
+  sim_time: 1000       # время моделирования
+  arrival_rate: 0.2    # интенсивность прихода клиентов (λ)
+  start_time: 0.0      # задержка перед первым запросом
+  client_prefix: "Client"
+
+external_source:
+  min_service: 3.0     # минимальное время обслуживания (сек)
+  max_service: 10.0    # максимальное время обслуживания (сек)
+  update_rate: 0.05    # интенсивность обновлений (λ_upd)
+
+cache:
+  strategy: "fixed_ttl"
+
+  fixed_ttl:
+    ttl: 60.0           # время жизни записи в кеше (сек)
+
+  adaptive_ttl:
+    theta: 1.0          # коэффициент для расчёта TTL = theta / λ̂_upd
+
+  hybrid:
+    k: 0.1              # параметр для вероятностного триггера предиктивного обновления
+    delta: 5.0          # интервал фоновых проверок (сек)

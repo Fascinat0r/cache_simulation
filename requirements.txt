@@ -1,0 +1,4 @@
+Pillow~=11.2.1
+simpy~=4.1.1
+matplotlib~=3.7.3
+PyYAML~=6.0.2
