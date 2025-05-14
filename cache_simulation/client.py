@@ -22,7 +22,7 @@ class Client:
             cache_request_fn: Callable[[Any], simpy.Event],
             arrival_rate: Optional[float] = None,
             interarrival_fn: Optional[Callable[[], float]] = None,
-            key_generator: Optional[Callable[[], Any]] = None,
+            key_generator: Optional[Callable[[str], Any]] = None,
             start_time: float = 0.0,
             name_prefix: str = "Client"
     ):
@@ -39,7 +39,7 @@ class Client:
         self.cache_request_fn = cache_request_fn
         self.arrival_rate = arrival_rate
         self.interarrival_fn = interarrival_fn or self._default_interarrival
-        self.key_generator = key_generator or (lambda: None)
+        self.key_generator = key_generator or (lambda client_id: client_id)
         self.start_time = start_time
         self.name_prefix = name_prefix
         self._counter = 0
@@ -62,7 +62,7 @@ class Client:
         while True:
             self._counter += 1
             client_id = f"{self.name_prefix}-{self._counter}"
-            key = self.key_generator()
+            key = self.key_generator(client_id)
             logger.debug(f"t={self.env.now:.2f}: {client_id} generated, key={key}")
 
             self.env.process(self._handle_request(client_id, key))

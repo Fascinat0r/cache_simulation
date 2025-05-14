@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 import yaml
 from pydantic import BaseModel, Field
@@ -56,11 +57,16 @@ class CacheConfig(BaseModel):
     hybrid: HybridConfig
 
 
+class OutputConfig(BaseModel):
+    path: str
+
+
 class Settings(BaseModel):
     logging: LoggingConfig
     simulator: SimulatorConfig
     external_source: ExternalSourceConfig
     cache: CacheConfig
+    output: Optional[OutputConfig] = None
 
     @classmethod
     def load(cls, path: str = None) -> "Settings":

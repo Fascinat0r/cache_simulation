@@ -242,3 +242,4 @@ cython_debug/
 ## Custom
 
 **/all_files.*
+**/results

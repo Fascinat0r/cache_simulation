@@ -54,9 +54,8 @@ def main():
     if args.no_export:
         logger.info("Skipping metrics export (--no-export)")
     else:
-        out_path = getattr(settings, "output", {}).get("path", None)
-        if out_path:
-            logger.info(f"Metrics were exported to {out_path}(.json/.csv)")
+        if settings.output is not None and settings.output.path:
+            logger.info(f"Metrics were exported to {settings.output.path}(.json)")
         else:
             logger.warning("No output.path in config; nothing was exported")
 
