@@ -81,9 +81,21 @@ class Cache:
             self._metrics.record_source_call()
 
             value, version = yield from self._call_source(key)
+            # до вызова сохраним старую версию (или None)
+            old_version = entry.version if entry else None
+            value, version = yield from self._call_source(key)
 
             wait = self.env.now - start
             self._metrics.record_miss(wait)
+
+            # новая или та же версия?
+
+            if old_version is None or version != old_version:
+                # действительно обновили данные
+                self._metrics.record_cache_update()
+            else:
+                # промах, но версия не сменилась
+                self._metrics.record_redundant_miss()
 
             entry = CacheEntry(value=value, version=version, timestamp=self.env.now)
             self._store[key] = entry

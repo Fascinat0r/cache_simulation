@@ -1,12 +1,13 @@
 # cache_simulation/resource.py
 
-from abc import ABC, abstractmethod
+from abc import ABC
 
 
 class Resource(ABC):
     """
     Абстрактный базовый класс для всех типов ресурсов (видов запросов).
-    Каждый ресурс хранит текущую версию данных и сообщает свою скорость обновления.
+    Каждый ресурс хранит свою текущую версию данных и умеет сообщать,
+    с какой интенсивностью должен обновляться.
     """
 
     __slots__ = ("name", "version")
@@ -16,7 +17,7 @@ class Resource(ABC):
         :param name: уникальное имя ресурса (ключ запроса)
         """
         self.name = name
-        self.version = 0  # начальная версия
+        self.version = 0  # изначальная версия
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.name}, v={self.version})"
@@ -29,11 +30,3 @@ class Resource(ABC):
 
     def __hash__(self):
         return hash(self.name)
-
-    @property
-    @abstractmethod
-    def update_rate(self) -> float:
-        """
-        Интенсивность фоновых обновлений этого ресурса (λ_upd).
-        """
-        ...

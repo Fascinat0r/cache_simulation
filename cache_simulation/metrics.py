@@ -22,8 +22,8 @@ class MetricsCollector:
         self.miss_times: List[float] = []
         self.stale_count: int = 0
         self.source_calls: int = 0
-
-        # новые
+        self.cache_updates: int = 0  # сколько miss-ов реально обновили данные
+        self.redundant_misses: int = 0  # сколько miss-ов вернули ту же версию
         self.hit_entry_ages: List[float] = []
         self.stale_entry_ages: List[float] = []
         self.events: List[Dict[str, Any]] = []
@@ -45,7 +45,15 @@ class MetricsCollector:
         self.source_calls += 1
         logger.debug("Metric: source call recorded")
 
-    # ——————————————— новые методы ———————————————
+    def record_cache_update(self):
+        """Miss-запрос, при котором версия отличается и кэш реально обновился."""
+        self.cache_updates += 1
+        logger.debug("Metric: cache updated on miss")
+
+    def record_redundant_miss(self):
+        """Miss-запрос, при котором версия совпала — бесполезный miss."""
+        self.redundant_misses += 1
+        logger.debug("Metric: redundant miss (no version change)")
 
     def record_entry_age_on_hit(self, age: float):
         self.hit_entry_ages.append(age)
@@ -111,11 +119,13 @@ class MetricsCollector:
             "total_misses": total_misses,
             "hit_rate": hit_rate,
             "miss_rate": miss_rate,
+            "cache_updates": self.cache_updates,
+            "redundant_misses": self.redundant_misses,
+            "invalidation_efficiency": (self.cache_updates / total_misses if total_misses else None),
             "avg_hit_time": avg_hit_time,
             "avg_miss_time": avg_miss_time,
             "stale_count": self.stale_count,
             "source_calls": self.source_calls,
-            # новые
             "avg_entry_age_on_hit": avg_entry_age_on_hit,
             "avg_entry_age_on_stale": avg_entry_age_on_stale,
             "total_events": len(self.events),
