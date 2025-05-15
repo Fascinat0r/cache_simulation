@@ -1,5 +1,6 @@
 # cache_simulation/simulator.py
 import json
+import random
 from datetime import datetime
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from cache_simulation.config import Settings
 from cache_simulation.external_source import ExternalSource
 from cache_simulation.logger import get_logger
 from cache_simulation.metrics import MetricsCollector
+from cache_simulation.resource import Resource
 from cache_simulation.strategies.fixed_ttl import FixedTTLStrategy
 
 # from cache_simulation.strategies.adaptive_ttl import AdaptiveTTLStrategy
@@ -43,8 +45,14 @@ class Simulator:
             env=self.env,
             min_service=es.min_service,
             max_service=es.max_service,
-            update_rate=es.update_rate
+            update_rate=es.update_rate,
+            metrics=self.metrics
         )
+
+        res_cfg = settings.resources
+        self.resources = [
+            Resource(f"r-{i + 1}") for i in range(res_cfg.count)
+        ]
 
         # Стратегия кеша
         cache_cfg = settings.cache
@@ -72,6 +80,7 @@ class Simulator:
             cache_request_fn=self.cache.request,
             arrival_rate=sim_cfg.arrival_rate,
             start_time=sim_cfg.start_time,
+            key_generator=lambda _: random.choice(self.resources),
             name_prefix=sim_cfg.client_prefix
         )
 

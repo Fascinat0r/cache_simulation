@@ -3,6 +3,7 @@ import random
 import simpy
 
 from cache_simulation.logger import get_logger
+from cache_simulation.metrics import MetricsCollector
 
 logger = get_logger(__name__)
 
@@ -20,17 +21,20 @@ class ExternalSource:
                  env: simpy.Environment,
                  min_service: float,
                  max_service: float,
-                 update_rate: float):
+                 update_rate: float,
+                 metrics: MetricsCollector = None):
         """
         :param env: SimPy Environment для моделирования событий.
         :param min_service: Минимальное время обслуживания (сек).
         :param max_service: Максимальное время обслуживания (сек).
         :param update_rate: Интенсивность обновлений λ_upd.
+        :param metrics: сборщик метрик (опционально)
         """
         self.env = env
         self.min_service = min_service
         self.max_service = max_service
         self.update_rate = update_rate
+        self.metrics = metrics
         self.server = simpy.Resource(env, capacity=1)
         self.version = 0
 
@@ -47,6 +51,8 @@ class ExternalSource:
             yield self.env.timeout(tau)
             self.version += 1
             logger.info(f"t={self.env.now:.2f}: Data updated to version {self.version}")
+            if self.metrics:
+                self.metrics.record_source_update(self.env.now)
 
     def request(self, client_id: int) -> simpy.Event:
         """

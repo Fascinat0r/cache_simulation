@@ -48,14 +48,22 @@ class Cache:
         self._metrics = metrics
         self._store: Dict[Any, CacheEntry] = {}
 
+    def __len__(self):
+        return len(self._store)
+
     def request(self, key: Any):
         def _proc():
             start = self.env.now
             entry = self._store.get(key)
 
-            if entry and self._strategy.is_valid(entry, start):
+            now = self.env.now
+            cache_size = len(self._store)
+            if entry and self._strategy.is_valid(entry, now):
                 # HIT
-                wait = self.env.now - start
+                age = now - entry.timestamp
+                self._metrics.record_entry_age_on_hit(age)
+                self._metrics.record_event(now, "hit", key, cache_size)
+                wait = now - start
                 logger.debug(f"t={self.env.now:.2f}: CACHE HIT key={key}, wait={wait:.2f}")
                 self._strategy.on_access(entry, start)
                 self._metrics.record_hit(wait)
@@ -63,7 +71,10 @@ class Cache:
 
             # MISS (или stale)
             if entry:
-                logger.debug(f"t={self.env.now:.2f}: CACHE STALE key={key}")
+                age = now - entry.timestamp
+                self._metrics.record_entry_age_on_stale(age)
+                self._metrics.record_event(now, "stale", key, cache_size)
+                logger.debug(f"t={now:.2f}: CACHE STALE key={key}, age={age:.2f}")
                 self._metrics.record_stale()
 
             logger.debug(f"t={self.env.now:.2f}: CACHE MISS key={key}")

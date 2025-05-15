@@ -1,3 +1,5 @@
+# cache_simulation/config.py
+
 import os
 from typing import Optional
 
@@ -37,6 +39,10 @@ class ExternalSourceConfig(BaseModel):
     update_rate: float
 
 
+class ResourcesConfig(BaseModel):
+    count: int
+
+
 class FixedTTLConfig(BaseModel):
     ttl: float
 
@@ -65,14 +71,12 @@ class Settings(BaseModel):
     logging: LoggingConfig
     simulator: SimulatorConfig
     external_source: ExternalSourceConfig
+    resources: ResourcesConfig
     cache: CacheConfig
     output: Optional[OutputConfig] = None
 
     @classmethod
     def load(cls, path: str = None) -> "Settings":
-        """
-        Загрузить и валидировать конфиг из YAML, возвращает pydantic-модель.
-        """
         yaml_path = path or os.getenv("CONFIG_PATH", "config/default.yaml")
         with open(yaml_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)

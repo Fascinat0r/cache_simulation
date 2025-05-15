@@ -14,7 +14,7 @@ logging:
 
 simulator:
   sim_time: 1000       # время моделирования
-  arrival_rate: 0.2    # интенсивность прихода клиентов (λ)
+  arrival_rate: 0.4    # интенсивность прихода клиентов (λ)
   start_time: 0.0      # задержка перед первым запросом
   client_prefix: "Client"
 
@@ -22,6 +22,9 @@ external_source:
   min_service: 3.0     # минимальное время обслуживания (сек)
   max_service: 10.0    # максимальное время обслуживания (сек)
   update_rate: 0.05    # интенсивность обновлений (λ_upd)
+
+resources:
+  count: 10
 
 cache:
   strategy: "fixed_ttl"
