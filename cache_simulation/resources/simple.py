@@ -1,7 +1,9 @@
-from cache_simulation.resource import Resource
+# cache_simulation/resources/simple.py
+
+from cache_simulation.resources.base import ResourceBase
 
 
-class SimpleResource(Resource):
+class SimpleResource(ResourceBase):
     """
     Простейшая реализация Resource, у которой
     интенсивность обновлений задаётся в конструкторе.

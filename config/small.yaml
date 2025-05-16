@@ -1,0 +1,44 @@
+# config/small.yaml
+
+logging:
+  file:
+    path: "simulation_small.log"
+    max_bytes: 1048576       # 1 MB
+    backup_count: 2
+    level: "DEBUG"
+    format: "%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(lineno)d): %(message)s"
+  console:
+    level: "INFO"
+    format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+
+simulator:
+  random_seed: 42
+  sim_time: 50         # всего 100 сек моделирования
+  arrival_rate: 1.0     # в среднем 1 запрос в сек
+  start_time: 0.0
+  client_prefix: "Client"
+
+external_source:
+  min_service: 1.0      # быстрая обработка: от 1 до 3 сек
+  max_service: 3.0
+
+resources:
+  count: 1              # 1 ресурс
+  update_rate: 0.05      # обновление ~1 раз в 10 сек
+
+cache:
+  strategy: "fixed_ttl"
+
+  fixed_ttl:
+    ttl: 5.0           # короткий TTL 10 сек
+
+  adaptive_ttl:
+    theta: 1.0
+
+  hybrid:
+    k: 0.1
+    delta: 2.0          # более частые фоновые проверки
+
+output:
+  path: "results/metrics_small"

@@ -6,6 +6,7 @@ import sys
 from cache_simulation.config import Settings
 from cache_simulation.logger import setup_logging, get_logger
 from cache_simulation.simulator import Simulator
+from cache_simulation.visualizer import SimulationVisualizer
 
 logger = get_logger(__name__)
 
@@ -50,6 +51,9 @@ def main():
     print("\n=== Simulation Metrics Summary ===")
     for k, v in summary.items():
         print(f"{k:20}: {v}")
+
+    viz = SimulationVisualizer(summary)
+    viz.show_all()
 
     if args.no_export:
         logger.info("Skipping metrics export (--no-export)")

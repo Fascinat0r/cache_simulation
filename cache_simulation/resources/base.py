@@ -1,9 +1,9 @@
-# cache_simulation/resource.py
+# cache_simulation/resources/base.py
 
 from abc import ABC
 
 
-class Resource(ABC):
+class ResourceBase(ABC):
     """
     Абстрактный базовый класс для всех типов ресурсов (видов запросов).
     Каждый ресурс хранит свою текущую версию данных и умеет сообщать,
@@ -26,7 +26,7 @@ class Resource(ABC):
         return self.name
 
     def __eq__(self, other):
-        return isinstance(other, Resource) and self.name == other.name
+        return isinstance(other, ResourceBase) and self.name == other.name
 
     def __hash__(self):
         return hash(self.name)

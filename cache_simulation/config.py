@@ -27,6 +27,7 @@ class LoggingConfig(BaseModel):
 
 
 class SimulatorConfig(BaseModel):
+    random_seed: int
     sim_time: float
     arrival_rate: float
     start_time: float = 0.0
@@ -36,11 +37,11 @@ class SimulatorConfig(BaseModel):
 class ExternalSourceConfig(BaseModel):
     min_service: float
     max_service: float
-    update_rate: float
 
 
 class ResourcesConfig(BaseModel):
     count: int
+    update_rate: float
 
 
 class FixedTTLConfig(BaseModel):
