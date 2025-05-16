@@ -35,6 +35,7 @@ cache:
 
   adaptive_ttl:
     theta: 1.0          # коэффициент для расчёта TTL = theta / λ̂_upd
+    recalc_interval: 100
 
   hybrid:
     k: 0.1              # параметр для вероятностного триггера предиктивного обновления

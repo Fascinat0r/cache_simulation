@@ -1,0 +1,51 @@
+logging:
+  file:
+    path: "simulation.log"
+    max_bytes: 10485760           # 10 MB
+    backup_count: 5
+    level: "DEBUG"
+    format: "%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(lineno)d): %(message)s"
+  console:
+    level: "INFO"
+    format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+
+# ------------------------- симулятор ------------------------------
+simulator:
+  random_seed: 1
+  sim_time: 86400                   # 24 ч
+  arrival_pattern: cyclic
+  arrival_rate: 0.2                 # λ_base  = 0.2 req/s  (1 каждые 5 с)
+  cyclic_amplitude: 1.0             # A = 1  →   от 0 до 2·λ_base
+  cyclic_period: 43200              # P = 12 ч (две волны за сутки)
+  start_time: 0.0
+  client_prefix: User
+
+# -------------------- внешний источник ----------------------------
+external_source:
+  min_service: 2.0                  # 2–6 с на обращение
+  max_service: 6.0
+
+# -------------------------- ресурсы -------------------------------
+resources:
+  count: 10
+  update_rate: 0.0001               # λ_upd ≈ 1/2500 с  (∼ 42 мин)
+
+# --------------------------- кеш ----------------------------------
+cache:
+  strategy: "adaptive_ttl"
+
+  fixed_ttl:
+    ttl: 60.0                       # стартовое TTL, дальше – по алгоритму
+
+  adaptive_ttl:
+    theta: 10.0                      # TTL ≈ theta / λ̂_upd  ⇒ порядка 80-120 мин
+    recalc_interval: 300            # пересчитывать раз в 10 мин
+
+  hybrid:
+    k: 0.1
+    delta: 5.0
+
+# -------------------------- вывод ---------------------------------
+output:
+  path: "results/metrics"
