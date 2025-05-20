@@ -1,6 +1,4 @@
 # заменяем весь файл; добавлены метрики ttl_changes и метод record_ttl_change
-import json
-from pathlib import Path
 from statistics import mean
 from typing import Any, Dict, List, Optional
 
@@ -37,7 +35,11 @@ class MetricsCollector:
         self.source_calls: List[Dict[str, Any]] = []
         self.source_updates: List[Dict[str, Any]] = []
         self.cache_calls: List[Dict[str, Any]] = []
-        self.ttl_changes: List[Dict[str, float]] = []   # <─ Новое!
+        self.ttl_changes: List[Dict[str, float]] = []
+
+        self.prefetch_events: List[Dict[str, Any]] = []
+        self.detected_periods: List[Dict[str, Any]] = []
+        self.profile_scores: List[Dict[str, Any]] = []
 
     # ------------------------------------------------------------------ #
     #   Методы‑регистраторы                                              #
@@ -70,12 +72,12 @@ class MetricsCollector:
         self.stale_entry_ages.append(age)
 
     def record_cache_call(
-        self,
-        key: Any,
-        start: float,
-        finish: float,
-        call_type: str,
-        version: int,
+            self,
+            key: Any,
+            start: float,
+            finish: float,
+            call_type: str,
+            version: int,
     ):
         self.cache_calls.append(
             {
@@ -86,6 +88,20 @@ class MetricsCollector:
                 "version": version,
             }
         )
+
+    def record_prefetch(self, time: float, resource: str):
+        self.prefetch_events.append({"time": time, "resource": resource})
+
+    def record_periods(self, time: float, periods: List[float]):
+        self.detected_periods.append({"time": time, "periods": periods})
+
+    def record_profile(self, time: float, period: float, bin_start: float, p: float):
+        self.profile_scores.append({
+            "time": time,
+            "period": period,
+            "bin": bin_start,
+            "p": p
+        })
 
     def record_event(self, time: float, event_type: str, key: Any, cache_size: int):
         self.events.append(
@@ -169,6 +185,9 @@ class MetricsCollector:
             "hit_entry_ages": self.hit_entry_ages,
             "stale_entry_ages": self.stale_entry_ages,
             "ttl_changes": self.ttl_changes,
+            "prefetch_events": self.prefetch_events,
+            "detected_periods": self.detected_periods,
+            "profile_scores": self.profile_scores,
         }
         return data
 

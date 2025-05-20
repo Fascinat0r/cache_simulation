@@ -149,10 +149,10 @@ class SimulationVisualizer:
             mpatches.Patch(color=cmap(v % cmap.N), label=f"v={v}")
             for v in real_versions
         ]
-        ax.legend(handles=patches_real,
-                  title="Версии ресурса",
-                  bbox_to_anchor=(1.02, 1),
-                  loc="upper left")
+        # ax.legend(handles=patches_real,
+        #           title="Версии ресурса",
+        #           bbox_to_anchor=(1.02, 1),
+        #           loc="upper left")
 
         # --- Версия в кеше ---
         cache_updates = sorted(

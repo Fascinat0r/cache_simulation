@@ -3,7 +3,7 @@ Pydantic-конфиг проекта (расширен поддержкой ци
 """
 
 import os
-from typing import Optional
+from typing import Optional, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -33,10 +33,10 @@ class LoggingConfig(BaseModel):
 class SimulatorConfig(BaseModel):
     random_seed: int
     sim_time: float
-    arrival_pattern: str = "poisson"  # "poisson" | "cyclic"
-    arrival_rate: float  # для poisson
-    cyclic_amplitude: float = 0.5  # для cyclic
-    cyclic_period: float = 24_000.0  # для cyclic (пример: «сутки»)
+    arrival_pattern: Literal["poisson", "cyclic"] = "poisson"
+    arrival_rate: float
+    cyclic_amplitude: float = 0.5
+    cyclic_period: float = 86_400.0
     start_time: float = 0.0
     client_prefix: str = "Client"
 
@@ -45,6 +45,10 @@ class SimulatorConfig(BaseModel):
 class ExternalSourceConfig(BaseModel):
     min_service: float
     max_service: float
+    update_pattern: Literal["poisson", "cyclic"] = "poisson"
+    cycle_period: Optional[float] = None
+    cycle_amplitude: Optional[float] = None
+    peak_phase: Optional[float] = None
 
 
 # ---------- ресурсы ----------
@@ -64,12 +68,18 @@ class AdaptiveTTLConfig(BaseModel):
 
 
 class HybridConfig(BaseModel):
-    k: float
-    delta: float
+    # реактивная часть (адаптивный TTL)
+    # предиктивная часть:
+    history_window: float  # за какой интервал собираем историю
+    analyze_interval: float  # как часто анализировать (FFT)
+    profile_bin_size: float  # размер бина для профиля (сек)
+    prefetch_interval: float  # интервал фоновой префетч-логики (сек)
+    max_periods: int = 3  # сколько самых сильных периодов брать
+    k: float  # коэффициент для P_pred
 
 
 class CacheConfig(BaseModel):
-    strategy: str
+    strategy: Literal["fixed_ttl", "adaptive_ttl", "hybrid_predictive"]
     fixed_ttl: FixedTTLConfig
     adaptive_ttl: AdaptiveTTLConfig
     hybrid: HybridConfig

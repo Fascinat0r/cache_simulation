@@ -1,6 +1,8 @@
 # cache_simulation/external_source.py
 
+import math
 import random
+from typing import Optional
 
 import simpy
 
@@ -11,26 +13,18 @@ logger = get_logger(__name__)
 
 
 class ExternalSource:
-    """
-    Внешний источник данных с единым M/M/1-сервером для всех ресурсов,
-    но независимыми фоновыми обновлениями для каждого Resource.
-    """
-
     def __init__(
             self,
             env: simpy.Environment,
             min_service: float,
             max_service: float,
             resources: list,
-            metrics: MetricsCollector = None
+            metrics: Optional[MetricsCollector] = None,
+            update_pattern: str = "poisson",
+            cycle_period: float = None,
+            cycle_amplitude: float = None,
+            peak_phase: float = None,
     ):
-        """
-        :param env: SimPy Environment.
-        :param min_service: минимальное время обслуживания запроса (сек).
-        :param max_service: максимальное время обслуживания запроса (сек).
-        :param resources: список объектов Resource (у каждого своя версия и update_rate).
-        :param metrics: опциональный сборщик метрик.
-        """
         self.env = env
         self.min_service = min_service
         self.max_service = max_service
@@ -40,15 +34,13 @@ class ExternalSource:
 
         # Запускаем фоновые обновления для каждого ресурса
         for res in self.resources:
-            self.env.process(self._update_generator(res))
+            if update_pattern == "cyclic":
+                self.env.process(self._update_generator_cyclic(
+                    res, cycle_period, cycle_amplitude, peak_phase))
+            else:
+                self.env.process(self._update_generator_poisson(res))
 
-        logger.info(
-            f"ExternalSource initialized: service_time∈[{min_service},{max_service}], "
-            f"{len(resources)} resources"
-        )
-
-    def _update_generator(self, resource):
-        """Пуассоновские обновления версии конкретного ресурса."""
+    def _update_generator_poisson(self, resource):
         while True:
             tau = random.expovariate(resource.update_rate)
             yield self.env.timeout(tau)
@@ -56,6 +48,25 @@ class ExternalSource:
             logger.info(f"t={self.env.now:.2f}: {resource} updated to v={resource.version}")
             if self.metrics:
                 self.metrics.record_source_update(resource, self.env.now)
+
+    def _update_generator_cyclic(self, resource, P, A, φ):
+        λ0 = resource.update_rate
+        λmax = λ0 * (1 + A)
+        t_cur = self.env.now
+        while True:
+            # thinning: ждём кандидата
+            tau = random.expovariate(λmax)
+            t_cur += tau
+            # момент с проверкой принятия
+            lam_t = λ0 * (1 + A * math.sin(2 * math.pi * (t_cur - φ) / P))
+            if random.random() <= lam_t / λmax:
+                yield self.env.timeout(tau)
+                resource.version += 1
+                if self.metrics:
+                    self.metrics.record_source_update(resource, self.env.now)
+            else:
+                # отклонили — просто двигаем время
+                yield self.env.timeout(tau)
 
     def request(self, resource):
         """

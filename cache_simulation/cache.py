@@ -1,6 +1,6 @@
 # cache_simulation/cache.py
 
-from typing import Any, Dict, Callable
+from typing import Any, Dict, Callable, Optional
 
 import simpy
 
@@ -30,10 +30,6 @@ class CacheEntry:
 class Cache:
     """
     Слой кеширования с инвалидацией по стратегии и сбором метрик.
-    При запросе:
-      - если запись есть и strategy.is_valid -> HIT (с небольшой задержкой)
-      - иначе -> MISS (или STALE), консолидированный fetch к source_request_fn,
-        обновление записи, и уведомление всех ожидающих.
     """
 
     def __init__(
@@ -47,141 +43,177 @@ class Cache:
         self._source_fn = source_request_fn
         self._strategy = strategy
         self._metrics = metrics
-        self._store: Dict[Any, CacheEntry] = {}
 
-        # Для того, чтобы отличать первичный stale от повторных
-        self._stale_seen = set()
-        # Для консолидации одновременных запросов на один ключ
+        # Основное хранилище и вспомогательные структуры
+        self._store: Dict[Any, CacheEntry] = {}
+        self._stale_seen: set = set()
         self._inflight: Dict[Any, simpy.events.Event] = {}
 
-        # Задержка на попадание в кэш (несравнимо малая)
+        # Константы
         self._hit_delay = 1e-3
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._store)
 
-    def request(self, key: Any):
+    def request(self, key: Any, *, is_prefetch: bool = False):
         """
-        Процесс одного клиентского запроса к кэшу.
-        Возвращает (value, version).
+        Возвращает процесс SimPy, который выполнит запрос:
+        - при hit: отдаст результат с минимальной задержкой,
+        - при miss/stale или prefetch: консолидирует fetch к источнику.
         """
+        return self.env.process(self._handle_request(key, is_prefetch))
 
-        def _proc():
-            start = self.env.now
-            entry = self._store.get(key)
-            now = start
-            cache_size = len(self._store)
+    # ------------------------------------------------------------------------- #
+    #                               Основной процесс                           #
+    # ------------------------------------------------------------------------- #
+    def _handle_request(self, key: Any, is_prefetch: bool):
+        start = self.env.now
+        entry = self._store.get(key)
+        cache_size = len(self._store)
 
-            # --- HIT ---
-            if entry and self._strategy.is_valid(entry, now):
-                age = now - entry.timestamp
+        # 1) Предиктивный prefetch — сразу в MISS-ветку
+        if is_prefetch:
+            self._metrics.record_event(start, "prefetch_attempt", key, cache_size)
+        else:
+            # 2) Попытка HIT
+            if entry and self._strategy.is_valid(entry, start):
+                return (yield from self._serve_hit(entry, key, start, cache_size))
 
-                # Разделяем корректный и некорректный hit
-                if entry.version == key.version:
-                    # корректный hit
-                    self._metrics.record_entry_age_on_hit(age)
-                    self._metrics.record_correct_hit(now - start)
-                    call_type = "hit_correct"
-                    self._metrics.record_event(now, call_type, key, cache_size)
-                    logger.debug(
-                        f"t={now:.2f}: CACHE HIT_CORRECT key={key} v={entry.version}"
-                    )
-                else:
-                    # неправильный hit (старые данные)
-                    self._metrics.record_entry_age_on_hit(age)
-                    self._metrics.record_incorrect_hit(now - start)
-                    call_type = "hit_incorrect"
-                    self._metrics.record_event(now, call_type, key, cache_size)
-                    logger.debug(
-                        f"t={now:.2f}: CACHE HIT_INCORRECT key={key} cached={entry.version} "
-                        f"actual={key.version}"
-                    )
-
-                self._strategy.on_access(entry, now)
-
-                # Добавляем небольшую задержку на чтение из кэша
-                yield self.env.timeout(self._hit_delay)
-
-                finish = self.env.now
-                self._metrics.record_cache_call(key, start, finish, call_type, entry.version)
-                return entry.value, entry.version
-
-            # --- STALE or MISS ---
+            # 3) Отметка stale-состояния перед MISS
             if entry:
-                age = now - entry.timestamp
-                if key not in self._stale_seen:
-                    # первый stale
-                    self._stale_seen.add(key)
-                    self._metrics.record_entry_age_on_stale(age)
-                    self._metrics.record_stale_initial()
-                    self._metrics.record_event(now, "stale_initial", key, cache_size)
-                    logger.debug(f"t={now:.2f}: CACHE STALE_INITIAL key={key}, age={age:.2f}")
-                else:
-                    # повторный stale
-                    self._metrics.record_entry_age_on_stale(age)
-                    self._metrics.record_stale_repeat()
-                    self._metrics.record_event(now, "stale_repeat", key, cache_size)
-                    logger.debug(f"t={now:.2f}: CACHE STALE_REPEAT key={key}, age={age:.2f}")
+                self._mark_stale(entry, key, start, cache_size)
 
-            # логируем сам факт miss
-            self._metrics.record_event(now, "miss", key, cache_size)
-            logger.debug(f"t={now:.2f}: CACHE MISS key={key}")
+            # 4) Нативный MISS
+            self._metrics.record_event(start, "miss", key, cache_size)
+            logger.debug(f"t={start:.2f}: CACHE MISS key={key}")
 
-            # --- Консолидация запросов на внешний источник ---
-            if key in self._inflight:
-                # Ждём завершения уже запущенного fetch
-                fetch_evt = self._inflight[key]
-            else:
-                # Запускаем один fetch и сохраняем его
-                old_version = entry.version if entry else None
-                fetch_evt = self.env.process(self._do_fetch(key, old_version))
-                self._inflight[key] = fetch_evt
+        # 5) Консолидация и выполнение fetch-а
+        value, version = yield from self._execute_fetch(key, entry, start)
 
-            # Ожидаем результата fetch-а
-            value, version = yield fetch_evt
+        return value, version
 
-            # Первый завершивший очистит inflight
-            if self._inflight.get(key) is fetch_evt:
-                del self._inflight[key]
-
-            # Учитываем время ожидания и записываем cache_call
-            finish = self.env.now
-            wait = finish - start
-            self._metrics.record_miss(wait)
-            self._metrics.record_cache_call(key, start, finish, "miss", version)
-
-            return value, version
-
-        return self.env.process(_proc())
-
-    def _do_fetch(self, key: Any, old_version: Any):
+    # ------------------------------------------------------------------------- #
+    #                               Обслуживание HIT                           #
+    # ------------------------------------------------------------------------- #
+    def _serve_hit(self, entry: CacheEntry, key: Any, start: float, cache_size: int):
         """
-        Фоновый процесс единого fetch-а для данного ключа.
+        Обработать корректный или некорректный hit,
+        записать метрики, выполнить лёгкую задержку и вернуть результат.
         """
-        # Запрашиваем у внешнего источника
-        value, version = yield from self._call_source(key)
+        now = self.env.now
+        age = now - entry.timestamp
+
+        if entry.version == key.version:
+            self._metrics.record_entry_age_on_hit(age)
+            self._metrics.record_correct_hit(now - start)
+            call_type = "hit_correct"
+            logger.debug(f"t={now:.2f}: CACHE HIT_CORRECT key={key} v={entry.version}")
+        else:
+            self._metrics.record_entry_age_on_hit(age)
+            self._metrics.record_incorrect_hit(now - start)
+            call_type = "hit_incorrect"
+            logger.debug(
+                f"t={now:.2f}: CACHE HIT_INCORRECT key={key} "
+                f"cached={entry.version} actual={key.version}"
+            )
+
+        self._metrics.record_event(now, call_type, key, cache_size)
+        self._strategy.on_access(entry, now)
+
+        # небольшая симуляционная задержка на чтение
+        yield self.env.timeout(self._hit_delay)
 
         finish = self.env.now
-        # Обновляем метрики по апдейтам
+        self._metrics.record_cache_call(key, start, finish, call_type, entry.version)
+        return entry.value, entry.version
+
+    # ------------------------------------------------------------------------- #
+    #                              Отметка STALE                                #
+    # ------------------------------------------------------------------------- #
+    def _mark_stale(self, entry: CacheEntry, key: Any, now: float, cache_size: int) -> None:
+        """
+        Зарегистрировать первое и последующие stale-состояния записи.
+        """
+        age = now - entry.timestamp
+        if key not in self._stale_seen:
+            self._stale_seen.add(key)
+            self._metrics.record_entry_age_on_stale(age)
+            self._metrics.record_stale_initial()
+            event = "stale_initial"
+            logger.debug(f"t={now:.2f}: CACHE STALE_INITIAL key={key}, age={age:.2f}")
+        else:
+            self._metrics.record_entry_age_on_stale(age)
+            self._metrics.record_stale_repeat()
+            event = "stale_repeat"
+            logger.debug(f"t={now:.2f}: CACHE STALE_REPEAT key={key}, age={age:.2f}")
+
+        self._metrics.record_event(now, event, key, cache_size)
+
+    # ------------------------------------------------------------------------- #
+    #                        Консолидация и fetch‐логику                       #
+    # ------------------------------------------------------------------------- #
+    def _execute_fetch(self, key: Any, entry: Optional[CacheEntry], start: float):
+        """
+        Гарантируем один _do_fetch на ключ в любой момент,
+        ждём его завершения и финализируем метрики.
+        """
+        # 1) Получаем или создаём inflight-событие
+        if key in self._inflight:
+            fetch_evt = self._inflight[key]
+        else:
+            old_ver = entry.version if entry else None
+            fetch_evt = self.env.process(self._do_fetch(key, old_ver))
+            self._inflight[key] = fetch_evt
+
+        # 2) Ждём результат
+        value, version = yield fetch_evt
+
+        # 3) Убираем из inflight первым завершившимся
+        if self._inflight.get(key) is fetch_evt:
+            del self._inflight[key]
+
+        # 4) Запись метрик miss и cache_call
+        finish = self.env.now
+        self._metrics.record_miss(finish - start)
+        self._metrics.record_cache_call(key, start, finish, "miss", version)
+
+        return value, version
+
+    # ------------------------------------------------------------------------- #
+    #                         Непосредственный запрос к источнику               #
+    # ------------------------------------------------------------------------- #
+    def _do_fetch(self, key: Any, old_version: Optional[int]):
+        """
+        Фоновый процесс единственного fetch-а для данного ключа:
+        1) вызываем внешний источник,
+        2) обновляем store и stale-флаги,
+        3) логируем и уведомляем стратегию.
+        """
+        # 1) Запрос в «чёрный ящик»
+        value, version = yield from self._call_source(key)
+
+        now = self.env.now
+        # 2) Метрики по обновлениям
         if old_version is None or version != old_version:
             self._metrics.record_cache_update()
         else:
             self._metrics.record_redundant_miss()
 
-        # Перезаписываем CacheEntry
-        entry = CacheEntry(value=value, version=version, timestamp=finish)
-        self._store[key] = entry
-        # Сбрасываем stale-флаг
+        # 3) Обновляем запись
+        self._store[key] = CacheEntry(value, version, now)
         self._stale_seen.discard(key)
 
-        logger.info(f"t={finish:.2f}: CACHE UPDATE key={key} -> version={version}")
-        self._strategy.on_update(entry, finish)
+        logger.info(f"t={now:.2f}: CACHE UPDATE key={key} -> version={version}")
+        self._strategy.on_update(self._store[key], now)
 
         return value, version
 
+    # ------------------------------------------------------------------------- #
+    #                        Обёртка над внешним запросом                       #
+    # ------------------------------------------------------------------------- #
     def _call_source(self, key: Any):
         """
-        Обёртка над симуляцией внешнего запроса.
+        Делегируем fetch «чёрному ящику» — просто yield из SimPy-процесса.
         """
         result = yield self._source_fn(key)
         return result

@@ -1,0 +1,54 @@
+logging:
+  file:
+    path: "simulation.log"
+    max_bytes: 10485760       # 10 MB
+    backup_count: 5
+    level: "DEBUG"
+    format: "%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(lineno)d): %(message)s"
+  console:
+    level: "WARNING"
+    format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+
+simulator:
+  random_seed: 1
+  sim_time: 1209600          # 2 недели
+  arrival_pattern: cyclic
+  arrival_rate: 0.2          # λ_base = 0.2 req/s
+  cyclic_amplitude: 1.0      # от 0 до 2·λ_base
+  cyclic_period: 43200       # P = 12 ч (две волны/сутки)
+  start_time: 0.0
+  client_prefix: "User"
+
+external_source:
+  min_service: 2.0
+  max_service: 6.0
+  update_pattern: "cyclic"
+  cycle_period: 86400.0      # 24 ч
+  cycle_amplitude: 1.0       # от 0 до 2·λ_upd
+  peak_phase: 50400.0        # фаза пика: 14:00 = 14·3600 = 50400 s
+
+resources:
+  count: 10
+  update_rate: 0.00001        # λ_upd ≈ 1/10000 s (~2.8 ч в среднем) базовый
+
+cache:
+  strategy: "hybrid_predictive"
+
+  fixed_ttl:
+    ttl: 3600.0               # 1 ч стартовый
+
+  adaptive_ttl:
+    theta: 10.0               # масштаб для адаптивной части
+    recalc_interval: 6000      # пересчёт каждые 100 мин
+
+  hybrid:
+    history_window: 86400     # 24 ч истории для FFT
+    analyze_interval: 1800    # анализ каждые 30 мин
+    profile_bin_size: 300     # 5 мин бины
+    prefetch_interval: 60     # префетчинг раз в минуту
+    max_periods: 3            # ищем до 3 наиболее сильных периодов
+    k: 0.2                    # коэффициент для P_pred
+
+output:
+  path: "results/metrics"
